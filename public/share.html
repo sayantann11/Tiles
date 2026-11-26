@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0F6B5B">
+<title>Bill</title>
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="stylesheet" href="css/app.css">
+<style>
+body{background:var(--bg)}
+.share{max-width:860px;margin:0 auto;padding:20px 14px 120px;display:flex;flex-direction:column;gap:14px}
+.share-bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;gap:10px;justify-content:center;z-index:10}
+.share-bar .btn{flex:1;max-width:280px}
+.share-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.share-top b{font:800 20px var(--f-display)}
+.paid{font-weight:800;color:var(--good)}
+</style>
+</head>
+<body>
+<div class="share" id="s"><div class="loading-shop"><span class="spin"></span><b>Opening…</b></div></div>
+<div id="print"></div><div id="toast"></div>
+<script type="module">
+import { esc, inr, fdateY, ic } from './js/core.js';
+import { paper, hydrateQr, upiLink, printHtml } from './js/docs.js';
+import { calcDoc } from './js/logic.js';
+const root = document.getElementById('s');
+const token = (location.hash || '').slice(1) || new URLSearchParams(location.search).get('t');
+(async () => {
+  try {
+    const r = await fetch((window.TD_API || '') + '/api/public/' + encodeURIComponent(token || ''));
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Not found');
+    const { kind, doc, shop, paid } = j;
+    const total = calcDoc(doc).total; const due = Math.max(0, total - (paid || 0));
+    document.title = (kind === 'quotes' ? 'Quotation ' : 'Bill ') + (doc.no || '') + ' · ' + (shop.shopName || '');
+    const html = paper(kind, doc, shop, { paid: paid || 0 });
+    const upi = kind === 'invoices' && due > 0.5 && shop.upi && !doc.cancelled ? upiLink(shop, due, doc.no) : '';
+    root.innerHTML = `<div class="share-top"><b>${esc(shop.shopName || '')}</b>${kind === 'invoices' ? (due > 0.5 ? `<span>Balance <b>${inr(due)}</b></span>` : '<span class="paid">Fully paid ✓</span>') : ''}</div><div class="paper-wrap">${html}</div>`;
+    document.body.insertAdjacentHTML('beforeend', `<div class="share-bar">${upi ? `<a class="btn primary lg" href="${esc(upi)}">Pay ${inr(due)} by UPI</a>` : ''}<button class="btn lg" type="button" id="pr">Download / print</button>${shop.phone ? `<a class="btn lg" href="tel:${esc(shop.phone)}">Call shop</a>` : ''}</div>`);
+    document.getElementById('pr').onclick = () => printHtml(html);
+    hydrateQr(root);
+  } catch (e) {
+    root.innerHTML = `<div class="empty"><b>Link not available</b><p>${esc(e.message)}</p></div>`;
+  }
+})();
+</script>
+</body>
+</html>
